@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { map, startWith, take } from 'rxjs/operators';
 import { Breakpoints, BreakpointObserver } from '@angular/cdk/layout';
-import { WeatherService } from '../services/weather.service';
+import { WeatherService } from './weather.service';
 import { WeatherData } from '../models/weather-data/weather-data';
 import { CurrentConditionsComponent } from '../cards/current-conditions/current-conditions.component';
 import { WeatherDiscussionComponent } from '../cards/weather-discussion/weather-discussion.component';
@@ -15,6 +15,10 @@ import { Observable } from 'rxjs';
 import { MatAutocompleteSelectedEvent } from '@angular/material';
 import * as USCities from '../../assets/us_cities.json';
 import { City } from '../models/city/city';
+import { select, Store } from '@ngrx/store';
+import { AppState, selectError } from '../reducers';
+import { LoadLocations } from './location.actions';
+import { LoadWeather } from './weather.actions';
 
 @Component({
   selector: 'app-weather',
@@ -36,6 +40,7 @@ export class WeatherComponent implements OnInit {
   filteredCities: Observable<City[]>;
   cities = [];
   selectedLocation = '';
+  error$: Observable<string>;
 
   cards = this.breakpointObserver.observe(Breakpoints.Handset).pipe(
     map(({ matches }) => {
@@ -47,7 +52,7 @@ export class WeatherComponent implements OnInit {
     })
   );
 
-  constructor(private breakpointObserver: BreakpointObserver, public weatherService: WeatherService) {
+  constructor(private breakpointObserver: BreakpointObserver, public weatherService: WeatherService, private store: Store<AppState>) {
     // desktop view
     this.cardsDesktop = [
       {
@@ -155,6 +160,8 @@ export class WeatherComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.error$ = this.store.pipe(select(selectError));
+    
     try {
       navigator.geolocation.getCurrentPosition((position) => {
         this.savePosition(position);
@@ -174,21 +181,18 @@ export class WeatherComponent implements OnInit {
       }
     }
 
-    this.weatherService.getWeather(this.locationData)
-      .pipe(take(1))
-      .subscribe(weather => this.weatherData = weather);
+    this.store.dispatch(new LoadLocations({locationData: this.locationData}));
   }
 
   onSelectionChanged(event: MatAutocompleteSelectedEvent) {
     for (const city of this.cities) {
       if (city.combinedName === event.option.value) {
-        this.locationData.latitude = city.latitude;
-        this.locationData.longitude = city.longitude;
-        this.weatherData = null;
-        this.weatherService.getWeather(this.locationData)
-          .pipe(take(1))
-          .subscribe(weather => this.weatherData = weather);
-
+        const latitude = parseFloat(city.latitude);
+        const longitude = parseFloat(city.longitude);
+        this.locationData.latitude = latitude.toFixed(4).toString();
+        this.locationData.longitude = longitude.toFixed(4).toString();
+        this.store.dispatch(new LoadWeather({weatherData: null}));
+        this.store.dispatch(new LoadLocations({locationData: this.locationData}));
         break;
       }
     }
